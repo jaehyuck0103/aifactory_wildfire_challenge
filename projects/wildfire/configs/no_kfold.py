@@ -5,7 +5,7 @@ from torch.optim import AdamW
 
 from projects.common.modules.unet.decoder import UNetDecoder
 from projects.common.modules.unet.encoders.regnet import RegNetEncoder
-from projects.wildfire.datasets import Dataset1
+from projects.wildfire.datasets import WildfireDataset
 from projects.wildfire.network import OurBaseModel, UNet
 
 env_cfg = dict(
@@ -23,7 +23,6 @@ model = dict(
         encoder=dict(
             type=RegNetEncoder, name="regnetx_002", in_ch=len(input_chs), empty_out_depths=[]
         ),
-        # encoder=dict(type=ResNetEncoder, name="resnet18", in_ch=10, empty_out_depths=[]),
         decoder=dict(
             type=UNetDecoder,
             decoder_chs=[128, 64, 48, 32],  # , 24],
@@ -35,14 +34,12 @@ model = dict(
 
 train_dataloader = dict(
     dataset=dict(
-        type=Dataset1,
-        cfg=dict(
-            mode="train",
-            epoch_scale_factor=10.0,
-            kfold_N=0,
-            kfold_I=0,
-            input_chs=input_chs,
-        ),
+        type=WildfireDataset,
+        mode="train",
+        epoch_scale_factor=10.0,
+        kfold_N=0,
+        kfold_I=0,
+        input_chs=input_chs,
     ),
     # batch_size=64 // 4,
     world_batch_size=64,
@@ -52,7 +49,7 @@ train_dataloader = dict(
     pin_memory=True,
     persistent_workers=True,
 )
-train_cfg = dict(by_epoch=True, max_epochs=1000)  # , val_interval=100)
+train_cfg = dict(by_epoch=True, max_epochs=1000)
 optim_wrapper = dict(optimizer=dict(type=AdamW, lr=1e-3))
 param_scheduler = dict(
     type=CosineRestartLR,
