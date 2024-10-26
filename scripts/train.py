@@ -1,5 +1,4 @@
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -8,7 +7,7 @@ import numpy as np
 import torch
 import typer
 from mmengine.config import Config
-from mmengine.dist import all_gather_object, is_main_process
+from mmengine.dist import broadcast_object_list, init_dist, is_distributed
 from mmengine.runner import Runner
 
 torch.backends.cudnn.benchmark = True
@@ -19,41 +18,32 @@ np.set_printoptions(linewidth=100)
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
-def remove_dummy_work_dir(work_dir):
-    work_dirs = set(all_gather_object(work_dir))
+def init_dist_and_get_synced_timestamp(cfg: Config):
+    """
+    To get the synced timestamp, init_dist() first.
+    Originally, init_dist() is be performed in setup_env() when the MMRunner is created.
+    """
+    launcher = cfg.get("launcher", "none")
+    if launcher != "none" and not is_distributed():
+        env_cfg = cfg.get("env_cfg", dict(dist_cfg=dict(backend="nccl")))
+        dist_cfg: dict = env_cfg.get("dist_cfg", {})
+        init_dist(launcher, **dist_cfg)
 
-    if is_main_process() and len(work_dirs) > 1:
-        work_dirs.remove(work_dir)
-        for x in work_dirs:
-            shutil.rmtree(x)
+    timestamp = [datetime.now().strftime("%y%m%d_%H%M%S")]
+    broadcast_object_list(timestamp)
+
+    return timestamp[0]
 
 
 def main(
     config_path: Path,
     ddp_on: bool = False,
-    separate_ddp_on: bool = False,
     num_batch_per_epoch: int | None = None,
 ):
     cfg = Config.fromfile(config_path)
 
-    if "work_dir" in cfg:
-        cfg.work_dir = (
-            Path(cfg.work_dir) / config_path.stem / datetime.now().strftime("%y%m%d_%H%M%S")
-        )
-    else:
-        cfg.work_dir = (
-            Path("Logs")
-            / config_path.parent.parent.stem
-            / config_path.stem
-            / datetime.now().strftime("%y%m%d_%H%M%S")
-        )
-
     if ddp_on:
         cfg.launcher = "pytorch"
-
-    if separate_ddp_on:
-        cfg.launcher = "pytorch"
-        cfg.model_wrapper_cfg = dict(type="MMSeparateDistributedDataParallel")
 
     cfg.train_dataloader.num_batch_per_epoch = num_batch_per_epoch
 
@@ -71,8 +61,13 @@ def main(
         del cfg.val_dataloader.world_batch_size
     ##
 
+    timestamp = init_dist_and_get_synced_timestamp(cfg)
+    if "work_dir" in cfg:
+        cfg.work_dir = Path(cfg.work_dir) / config_path.stem / timestamp
+    else:
+        cfg.work_dir = Path("Logs") / config_path.parent.parent.stem / config_path.stem / timestamp
+
     runner = Runner.from_cfg(cfg)
-    remove_dummy_work_dir(cfg.work_dir)
     runner.train()
 
 
