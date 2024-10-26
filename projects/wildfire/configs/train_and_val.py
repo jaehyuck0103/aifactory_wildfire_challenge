@@ -6,6 +6,7 @@ from torch.optim import AdamW
 from projects.common.modules.unet.decoder import UNetDecoder
 from projects.common.modules.unet.encoders.regnet import RegNetEncoder
 from projects.wildfire.datasets import WildfireDataset
+from projects.wildfire.hook import AccuracyHook
 from projects.wildfire.network import OurBaseModel, UNet
 
 env_cfg = dict(
@@ -15,6 +16,8 @@ env_cfg = dict(
 )
 
 input_chs = [0, 1, 2, 3, 4, 5, 6]
+kfold_N = 5
+kfold_I = 0
 
 model = dict(
     type=OurBaseModel,
@@ -25,7 +28,7 @@ model = dict(
         ),
         decoder=dict(
             type=UNetDecoder,
-            decoder_chs=[128, 64, 48, 32],  # , 24],
+            decoder_chs=[128, 64, 48, 32],
             upsample_mode="nearest",
             use_batchnorm=True,
         ),
@@ -37,8 +40,8 @@ train_dataloader = dict(
         type=WildfireDataset,
         mode="train",
         epoch_scale_factor=10.0,
-        kfold_N=0,
-        kfold_I=0,
+        kfold_N=kfold_N,
+        kfold_I=kfold_I,
         input_chs=input_chs,
     ),
     # batch_size=64 // 4,
@@ -49,7 +52,7 @@ train_dataloader = dict(
     pin_memory=True,
     persistent_workers=True,
 )
-train_cfg = dict(by_epoch=True, max_epochs=1000)
+train_cfg = dict(by_epoch=True, max_epochs=150)
 optim_wrapper = dict(optimizer=dict(type=AdamW, lr=1e-3))
 param_scheduler = dict(
     type=CosineRestartLR,
@@ -61,6 +64,27 @@ param_scheduler = dict(
 )
 
 
+val_dataloader = dict(
+    dataset=dict(
+        type=WildfireDataset,
+        mode="val",
+        epoch_scale_factor=1.0,
+        kfold_N=kfold_N,
+        kfold_I=kfold_I,
+        input_chs=input_chs,
+    ),
+    # batch_size=64 // 4,
+    world_batch_size=64,
+    sampler=dict(type=DefaultSampler, shuffle=False),
+    collate_fn=dict(type=default_collate),
+    num_workers=8,
+    pin_memory=True,
+    persistent_workers=True,
+)
+val_cfg = dict()
+val_evaluator = []
+
+custom_hooks = [dict(type=AccuracyHook)]
 default_hooks = dict(
     checkpoint=dict(type=CheckpointHook, interval=10),
     logger=dict(type=LoggerHook, interval=1000),

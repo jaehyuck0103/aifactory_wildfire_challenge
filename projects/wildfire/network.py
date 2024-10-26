@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from mmengine.model import BaseModel as MMBaseModel
 from mmengine.registry import MODELS
 from torch import nn
@@ -42,8 +41,6 @@ class UNet(nn.Module):
         # output_h2 = self.head2(decoder_out[-3])
         # output_h1 = self.head1(decoder_out[-2])
         output_h0 = self.head0(decoder_out[-1])
-
-        # output_h0 = torch.sigmoid(output_h0)
 
         return output_h0
 
